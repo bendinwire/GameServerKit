@@ -56,6 +56,19 @@ public actor RoomRegistry<Room: GameRoom> {
         return try body(&room)
     }
 
+    /// Rooms currently flagged `isPublic`, for a lobby-listing endpoint. Returns the rooms
+    /// themselves rather than a DTO — callers map each into their own game-specific summary
+    /// (player count, state, host name, etc.), since the registry has no notion of gameplay.
+    public func publicRooms() async -> [Room] {
+        var result: [Room] = []
+        for room in rooms.values {
+            if await room.isPublic {
+                result.append(room)
+            }
+        }
+        return result
+    }
+
     private func generateUniqueCode() -> String {
         while true {
             let code = String((0..<codeLength).map { _ in codeAlphabet.randomElement()! })
