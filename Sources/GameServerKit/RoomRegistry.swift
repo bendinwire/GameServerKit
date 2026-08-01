@@ -39,6 +39,12 @@ public actor RoomRegistry<Room: GameRoom> {
         return room
     }
 
+    /// Every live room, for administrative listings (an operator needs to see abandoned rooms
+    /// in order to reap them; `publicRooms()` deliberately shows only advertised ones).
+    public func allRooms() -> [Room] {
+        Array(rooms.values)
+    }
+
     public func room(for code: String) -> Room? {
         rooms[code.uppercased()]
     }
