@@ -242,16 +242,40 @@ public actor PlayerIdentityStore {
     velvet violet walnut walrus wasabi willow window wizard yogurt zephyr
     """.split(whereSeparator: { $0 == " " || $0 == "\n" }).map { $0.uppercased() }
 
+    /// Real five-letter words, each used with one digit after it: "RADAR1". Drawn as often as
+    /// the six-letter list, never a truncated stem.
+    public static let shortCodeWords: [String] = """
+    acorn amber apple apron arrow aspen atlas badge bagel banjo \
+    basil beach beans berry bison blaze bloom brick brook candy \
+    cargo cedar cello chair chili cider cliff cloud clove cobra \
+    comet coral crane cream crown daisy delta denim disco diver \
+    dolly donut dough drift eagle earth ember fable fairy feast \
+    fence ferry fjord flame flint flock flute forge frost fudge \
+    gecko ghost giant glove goose grape grass gravy guava heron \
+    honey horse igloo ivory jelly jewel juice kayak kiosk koala \
+    lemon lilac llama lotus lunar magma mango maple march marsh \
+    melon metro mocha moose mound mouse music nacho night noble \
+    north nurse oasis ocean olive onion opera orbit otter panda \
+    pansy pasta peach pearl pecan penny piano pilot pixel pizza \
+    plaza plush polar poppy prism quail quart queen quilt radar \
+    radio raven ridge river robin robot rocky royal salad salsa \
+    sauce scout shark sheep shell sleet smile solar spice spoon \
+    squid stone storm straw sugar sunny swamp swift tango teddy \
+    tiger toast topaz torch trail trout truck tulip vapor vinyl \
+    viola wagon whale wheat yacht zebra
+    """.split(whereSeparator: { $0 == " " || $0 == "\n" }).map { $0.uppercased() }
+
     private func freshCode(among identities: [PlayerIdentity]) -> String {
         let taken = Set(identities.compactMap(\.linkCode))
-        let free = Self.codeWords.filter { !taken.contains($0) }
-        if let word = free.randomElement() { return word }
-        // Every word is spoken for: more people than the list expected. Fall back to the first
-        // five letters of a word plus one digit. Still six characters, still reads as a word
-        // ("BARRE7"), and ten times the list before that runs out too.
+        // Both shapes on equal footing: a six-letter word ("BARREL") or a five-letter word plus a
+        // digit ("TIGER4"). Six characters either way; a coin flip picks the shape.
         var code: String
         repeat {
-            code = "\(Self.codeWords.randomElement()!.prefix(5))\(Int.random(in: 0...9))"
+            if Bool.random() {
+                code = Self.codeWords.randomElement()!
+            } else {
+                code = "\(Self.shortCodeWords.randomElement()!)\(Int.random(in: 0...9))"
+            }
         } while taken.contains(code)
         return code
     }
