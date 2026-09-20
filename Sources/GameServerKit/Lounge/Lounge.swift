@@ -155,11 +155,12 @@ public actor Lounge {
     // MARK: Private
 
     private func people() -> [Person] {
-        var byPerson: [String: (name: String, devices: Int)] = [:]
+        // The row's name is whatever the most recently heard-from device calls itself.
+        var byPerson: [String: (name: String, heard: Date, devices: Int)] = [:]
         for c in connections.values {
-            var entry = byPerson[c.personId] ?? (name: c.name, devices: 0)
+            var entry = byPerson[c.personId] ?? (name: c.name, heard: .distantPast, devices: 0)
             entry.devices += 1
-            entry.name = c.name
+            if c.lastHeardFrom >= entry.heard { entry.name = c.name; entry.heard = c.lastHeardFrom }
             byPerson[c.personId] = entry
         }
         return byPerson.map { id, entry in
