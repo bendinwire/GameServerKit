@@ -34,7 +34,7 @@ public struct ClientInfo: Codable, Content, Sendable, Equatable {
         var any = false
         for pair in raw.split(separator: ";") {
             let parts = pair.split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
-            guard parts.count == 2, !parts[1].isEmpty else { continue }
+            guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else { continue }
             any = true
             let value = String(parts[1].prefix(80))
             switch parts[0].lowercased() {
