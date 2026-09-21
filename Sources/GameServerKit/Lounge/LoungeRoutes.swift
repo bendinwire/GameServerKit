@@ -11,10 +11,13 @@ import Vapor
 public struct LoungeRoutes: RouteCollection, Sendable {
     public let lounge: Lounge
     public let identities: PlayerIdentityStore
+    /// Records what each visitor is holding; nil to skip.
+    public let devices: DeviceRegistry?
 
-    public init(lounge: Lounge, identities: PlayerIdentityStore) {
+    public init(lounge: Lounge, identities: PlayerIdentityStore, devices: DeviceRegistry? = nil) {
         self.lounge = lounge
         self.identities = identities
+        self.devices = devices
     }
 
     public func boot(routes: RoutesBuilder) throws {
@@ -46,6 +49,7 @@ public struct LoungeRoutes: RouteCollection, Sendable {
             let personId: String
             if let key = PlayerKeys.sanitized(req.query[String.self, at: "key"]) {
                 personId = await identities.identity(for: key)?.id.uuidString ?? key
+                await devices?.note(key: key, name: name, client: req.clientInfo)
             } else {
                 personId = "anon-\(UUID().uuidString)"
             }

@@ -10,7 +10,7 @@ public func configureGameCORS(
     let configuration = CORSMiddleware.Configuration(
         allowedOrigin: .all,
         allowedMethods: methods,
-        allowedHeaders: [.accept, .authorization, .contentType, .origin, .xRequestedWith]
+        allowedHeaders: [.accept, .authorization, .contentType, .origin, .xRequestedWith, HTTPHeaders.Name("X-Client")]
     )
     app.middleware.use(CORSMiddleware(configuration: configuration), at: .beginning)
 }
