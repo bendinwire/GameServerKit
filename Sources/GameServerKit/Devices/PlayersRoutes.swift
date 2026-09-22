@@ -2,7 +2,14 @@ import Foundation
 import Vapor
 
 /// `GET /api/v1/players` — everyone the server has seen, newest first, with what they were
-/// holding. An operator view, same trust tier as `rooms/admin`: no auth, keys masked.
+/// holding.
+///
+/// **Register this behind whatever gates `rooms/admin`.** It is an operator view: keys are masked
+/// to six characters, so nothing it returns is a credential, but it is a roster of who plays here
+/// and on what — names, platform, OS, device, host, and the table each last sat at. This type
+/// carries no middleware of its own and never will; the decision is the app's, and both apps
+/// using this kit answer yes. It shipped ungated once, which is the only reason this paragraph
+/// is this long.
 ///
 /// - Parameter roomIsLive: whether a room code still exists, so `inRoom` only names a table that
 ///   is actually going.
