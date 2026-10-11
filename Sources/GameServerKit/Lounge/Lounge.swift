@@ -124,7 +124,7 @@ public actor Lounge {
         guard let conn = connections[id] else { return nil }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard (1...Self.maxTextLength).contains(trimmed.count) else { return nil }
-        let line = ChatLine(id: nextLineId, personId: conn.personId, name: conn.name, text: trimmed, at: Date())
+        let line = ChatLine(id: nextLineId, personId: conn.personId, name: conn.name, text: ChatFilter.clean(trimmed), at: Date())
         nextLineId += 1
         chat.append(line)
         if chat.count > Self.maxChatLines { chat.removeFirst(chat.count - Self.maxChatLines) }

@@ -21,10 +21,11 @@ import Vapor
 
     let line = await lounge.say("  hi all  ", from: a1)
     #expect(line?.text == "hi all" && line?.name == "Ann")   // the sending device's name
+    #expect(await lounge.say("well shit", from: a1)?.text == "well ****")   // masked, still delivered
     #expect(await lounge.say("", from: a1) == nil)
     #expect(await lounge.say(String(repeating: "x", count: 301), from: a1) == nil)
     snap = await lounge.snapshot()
-    #expect(snap.chat.count == 1)
+    #expect(snap.chat.count == 2)
     #expect(snap.people[0].lastActiveAt >= snap.people[0].since)
 
     await lounge.leave(a1)

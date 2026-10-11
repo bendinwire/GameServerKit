@@ -12,14 +12,14 @@ public enum NameFilter {
     /// every entry here is a promise that no real name contains it, and that promise is easy to
     /// break — "cunt" is in Scunthorpe, "spic" in suspicious, "anal" in Analiese, "cum" in
     /// Cumberland, "shit" in Shittake. Those all live in the whole-word list instead.
-    private static let anywhere: [String] = [
+    static let anywhere: [String] = [
         "nigg", "fagg", "kike", "wetback", "tranny", "molest", "pedophile", "fuck",
         "dickhead", "cocksuck", "motherfuck",
     ]
 
     /// Rejected as a whole word, with ordinary endings allowed ("retarded", "bitches"). This is
     /// where anything that is a substring of a real name or an ordinary word belongs.
-    private static let wholeWord: [String] = [
+    static let wholeWord: [String] = [
         "ass", "arse", "hell", "damn", "crap", "tit", "piss", "turd", "shit", "cunt",
         "pussy", "bitch", "whore", "slut", "prick", "twat", "wank", "bollock", "penis",
         "vagina", "anal", "semen", "cum", "rape", "rapist", "retard", "spastic", "chink",
@@ -28,7 +28,7 @@ public enum NameFilter {
 
     /// Endings allowed after a whole word, so a list of stems covers the forms people actually
     /// type. "assassin" survives because "assin" is not one of these.
-    private static let endings: Set<String> = ["", "s", "es", "ed", "er", "ers", "ing", "y", "ies", "hole", "head"]
+    static let endings: Set<String> = ["", "s", "es", "ed", "er", "ers", "ing", "y", "ies", "hole", "head"]
 
     /// Checked against the de-spaced, de-doubled form, which is how anyone actually evades a word
     /// list ("f u c k", "N-I-G-G-E-R", "faaaag"). Necessarily even shorter than `anywhere`: with
@@ -39,11 +39,11 @@ public enum NameFilter {
     /// which is a country, and "faggot" into "fagot", which is close enough to the surname Fagan's
     /// neighbourhood to leave alone. Separator evasion ("N-I-G-G-E-R") is handled by the
     /// de-spaced pass instead, which keeps doubled letters and so keeps those words intact.
-    private static let stretched: [String] = ["fuck"]
+    static let stretched: [String] = ["fuck"]
 
     /// Common letter-for-symbol swaps, so `sh1t` and `f@ck` don't walk straight past a list of
     /// plain words. Applied only for the CHECK — the name is stored exactly as typed.
-    private static let deleet: [Character: Character] = [
+    static let deleet: [Character: Character] = [
         "0": "o", "1": "i", "!": "i", "|": "i", "3": "e", "4": "a", "@": "a",
         "5": "s", "$": "s", "7": "t", "+": "t", "8": "b", "9": "g",
     ]
@@ -81,7 +81,7 @@ public enum NameFilter {
 
     private static let rejection = "Pick a different name — that one won't fly at this table."
 
-    private enum Mode {
+    enum Mode {
         /// Letters and single spaces — what the whole-word pass reads.
         case spaced
         /// Separators dropped entirely, doubled letters kept.
@@ -92,7 +92,7 @@ public enum NameFilter {
 
     /// Lowercased, un-leeted, and reduced to letters — with separators and repeats treated
     /// according to `mode`.
-    private static func normalize(_ name: String, mode: Mode) -> String {
+    static func normalize(_ name: String, mode: Mode) -> String {
         var out = ""
         out.reserveCapacity(name.count)
         for raw in name.lowercased() {
