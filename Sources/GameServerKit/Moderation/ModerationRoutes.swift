@@ -11,8 +11,8 @@ import Vapor
 ///
 /// When `MODERATION_NOTIFY_URL` is set, each report is also POSTed there as plain text (an
 /// ntfy.sh topic works as-is), so a report is seen within the day rather than when someone
-/// remembers to look. `MODERATION_NOTIFY_EMAIL` adds ntfy's `Email` header, so ntfy also mails
-/// the report to that address — no mail server or SMTP credentials on the game server. Set `MODERATION_NOTIFY_EMAIL` too and ntfy also emails each report there.
+/// remembers to look. When `MODERATION_NOTIFY_EMAIL` is set, each report is also emailed there
+/// through `msmtp` (see `email(to:subject:body:logger:)`); the two are independent.
 public struct ModerationRoutes: RouteCollection, Sendable {
     public let store: ModerationStore
     public let identities: PlayerIdentityStore
@@ -92,23 +92,54 @@ public struct ModerationRoutes: RouteCollection, Sendable {
     }
 
     private func notify(_ report: ModerationStore.Report, req: Request) async {
-        guard let raw = Environment.get("MODERATION_NOTIFY_URL"), let url = URL(string: raw) else { return }
         var lines = ["\(game) report: \(report.reason) — \(report.name) [\(report.personId)]"]
         if let context = report.context { lines.append("where: \(context)") }
         if let text = report.text { lines.append("said: \(text)") }
         if let details = report.details, !details.isEmpty { lines.append("details: \(details)") }
         let body = lines.joined(separator: "\n")
-        // ntfy forwards a message to email when it carries an `Email` header, so setting
-        // MODERATION_NOTIFY_EMAIL as well gets each report to an inbox too. A header rather than
-        // ntfy's `?email=` parameter, so the address never sits in a URL or a request log.
-        let email = Environment.get("MODERATION_NOTIFY_EMAIL").flatMap { $0.isEmpty ? nil : $0 }
+        // Email goes through msmtp, not ntfy: ntfy.sh refuses to email for an anonymous publisher
+        // (error 40053), which is what 1.8.1's `Email` header ran into.
+        if let to = Environment.get("MODERATION_NOTIFY_EMAIL"), !to.isEmpty {
+            Self.email(to: to, subject: "\(game) player report", body: body, logger: req.logger)
+        }
+        guard let raw = Environment.get("MODERATION_NOTIFY_URL"), let url = URL(string: raw) else { return }
         _ = try? await req.client.post(URI(string: url.absoluteString)) { out in
             out.headers.replaceOrAdd(name: "Title", value: "\(game) player report")
-            if let email = Environment.get("MODERATION_NOTIFY_EMAIL"), !email.isEmpty {
-                out.headers.replaceOrAdd(name: "Email", value: email)
-            }
-            if let email { out.headers.replaceOrAdd(name: "Email", value: email) }
             out.body = ByteBuffer(string: body)
+        }
+    }
+
+    /// Hands a plain-text message to `msmtp -t`, which reads the recipient from the headers. The
+    /// recipient and subject come from the environment and from code, never from a player; a
+    /// player's text only ever lands in the body, below the blank line, where it can't add a
+    /// header. Fire and forget: the report is already stored, and a mail problem must not fail the
+    /// request. msmtp reads `/etc/msmtprc`, because a unit with `ProtectHome=true` can't see a
+    /// per-user `~/.msmtprc`.
+    static func email(to: String, subject: String, body: String, logger: Logger) {
+        let candidates = ["/usr/bin/msmtp", "/usr/local/bin/msmtp"]
+        guard let path = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
+            logger.warning("MODERATION_NOTIFY_EMAIL is set but msmtp is not installed")
+            return
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = ["-t"]
+        let input = Pipe()
+        process.standardInput = input
+        do {
+            try process.run()
+        } catch {
+            logger.warning("moderation email: could not start msmtp: \(error)")
+            return
+        }
+        let message = "To: \(to)\nSubject: \(subject)\nContent-Type: text/plain; charset=utf-8\n\n\(body)\n"
+        input.fileHandleForWriting.write(Data(message.utf8))
+        try? input.fileHandleForWriting.close()
+        Task.detached {
+            process.waitUntilExit()
+            if process.terminationStatus != 0 {
+                logger.warning("moderation email: msmtp exited \(process.terminationStatus)")
+            }
         }
     }
 }
