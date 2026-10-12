@@ -13,11 +13,14 @@ public struct LoungeRoutes: RouteCollection, Sendable {
     public let identities: PlayerIdentityStore
     /// Records what each visitor is holding; nil to skip.
     public let devices: DeviceRegistry?
+    /// Banned people can still idle here but not chat; nil to skip the check.
+    public let moderation: ModerationStore?
 
-    public init(lounge: Lounge, identities: PlayerIdentityStore, devices: DeviceRegistry? = nil) {
+    public init(lounge: Lounge, identities: PlayerIdentityStore, devices: DeviceRegistry? = nil, moderation: ModerationStore? = nil) {
         self.lounge = lounge
         self.identities = identities
         self.devices = devices
+        self.moderation = moderation
     }
 
     public func boot(routes: RoutesBuilder) throws {
@@ -34,6 +37,8 @@ public struct LoungeRoutes: RouteCollection, Sendable {
         return .success(name)
     }
 
+    public static let bannedMessage = "Chat is turned off for this player after reports from other players."
+
     func handleWebSocket(req: Request, ws: WebSocket) {
         Task {
             let name: String
@@ -45,10 +50,11 @@ public struct LoungeRoutes: RouteCollection, Sendable {
                 return
             }
             // One row per person: the linked identity when there is one, the device key
-            // otherwise, and a throwaway id for a client that sent no key at all.
+            // otherwise, and a throwaway id for a client that sent no key at all. Hashed either
+            // way — the row id goes to everyone, and a bare key is that player's credential.
             let personId: String
             if let key = PlayerKeys.sanitized(req.query[String.self, at: "key"]) {
-                personId = await identities.identity(for: key)?.id.uuidString ?? key
+                personId = await PublicPersonID.of(key: key, identities: identities)
                 await devices?.note(key: key, name: name, client: req.clientInfo)
             } else {
                 personId = "anon-\(UUID().uuidString)"
@@ -64,7 +70,9 @@ public struct LoungeRoutes: RouteCollection, Sendable {
                 guard let msg = try? JSONDecoder().decode(Lounge.ClientMessage.self, from: Data(text.utf8)) else { return }
                 switch msg.type {
                 case "chat":
-                    if await lounge.say(msg.text ?? "", from: id) == nil {
+                    if await moderation?.isBanned(personId) == true {
+                        try? await ws.send(await lounge.encode(.init(type: "error", message: Self.bannedMessage)))
+                    } else if await lounge.say(msg.text ?? "", from: id) == nil {
                         try? await ws.send(await lounge.encode(.init(type: "error", message: "Say something, up to \(Lounge.maxTextLength) characters.")))
                     }
                 case "ping":
