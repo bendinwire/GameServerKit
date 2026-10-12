@@ -11,7 +11,8 @@ import Vapor
 ///
 /// When `MODERATION_NOTIFY_URL` is set, each report is also POSTed there as plain text (an
 /// ntfy.sh topic works as-is), so a report is seen within the day rather than when someone
-/// remembers to look.
+/// remembers to look. `MODERATION_NOTIFY_EMAIL` adds ntfy's `Email` header, so ntfy also mails
+/// the report to that address — no mail server or SMTP credentials on the game server. Set `MODERATION_NOTIFY_EMAIL` too and ntfy also emails each report there.
 public struct ModerationRoutes: RouteCollection, Sendable {
     public let store: ModerationStore
     public let identities: PlayerIdentityStore
@@ -97,8 +98,16 @@ public struct ModerationRoutes: RouteCollection, Sendable {
         if let text = report.text { lines.append("said: \(text)") }
         if let details = report.details, !details.isEmpty { lines.append("details: \(details)") }
         let body = lines.joined(separator: "\n")
+        // ntfy forwards a message to email when it carries an `Email` header, so setting
+        // MODERATION_NOTIFY_EMAIL as well gets each report to an inbox too. A header rather than
+        // ntfy's `?email=` parameter, so the address never sits in a URL or a request log.
+        let email = Environment.get("MODERATION_NOTIFY_EMAIL").flatMap { $0.isEmpty ? nil : $0 }
         _ = try? await req.client.post(URI(string: url.absoluteString)) { out in
             out.headers.replaceOrAdd(name: "Title", value: "\(game) player report")
+            if let email = Environment.get("MODERATION_NOTIFY_EMAIL"), !email.isEmpty {
+                out.headers.replaceOrAdd(name: "Email", value: email)
+            }
+            if let email { out.headers.replaceOrAdd(name: "Email", value: email) }
             out.body = ByteBuffer(string: body)
         }
     }
