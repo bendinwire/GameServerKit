@@ -32,15 +32,36 @@ public struct JSONLinesFile<Row: Codable>: Sendable {
     }
 
     /// Adds one row to the end of the file, creating it if needed.
+    ///
+    /// Failures are reported through `PersistenceHealth` (an error log line and the health
+    /// route), never swallowed — see that type for the twenty days this used to cost.
+    ///
+    /// An existing file is only ever appended to. The old fallback, when the file existed but
+    /// couldn't be opened for writing, was `Data.write(to:)` — which TRUNCATES. It only ever ran
+    /// into the same permission error, but on any failure it could get past, it would have
+    /// replaced the whole history with one row.
     public func append(_ row: Row) {
-        guard let data = try? JSONEncoder().encode(row), let line = String(data: data, encoding: .utf8),
-              let lineData = (line + "\n").data(using: .utf8) else { return }
-        if FileManager.default.fileExists(atPath: url.path), let handle = try? FileHandle(forWritingTo: url) {
-            handle.seekToEndOfFile()
-            handle.write(lineData)
-            try? handle.close()
-        } else {
-            try? lineData.write(to: url)
+        let lineData: Data
+        do {
+            lineData = try JSONEncoder().encode(row) + Data("\n".utf8)
+        } catch {
+            PersistenceHealth.shared.failed(url, "encode a row for", error)
+            return
+        }
+        do {
+            if FileManager.default.fileExists(atPath: url.path) {
+                let handle = try FileHandle(forWritingTo: url)
+                defer { try? handle.close() }
+                try handle.seekToEnd()
+                try handle.write(contentsOf: lineData)
+            } else {
+                // `.withoutOverwriting`: if something creates the file between the check and
+                // here, fail rather than clobber it.
+                try lineData.write(to: url, options: .withoutOverwriting)
+            }
+            PersistenceHealth.shared.succeeded(url)
+        } catch {
+            PersistenceHealth.shared.failed(url, "append to", error)
         }
     }
 
@@ -54,10 +75,19 @@ public struct JSONLinesFile<Row: Codable>: Sendable {
         }
         let text = lines.isEmpty ? "" : lines.joined(separator: "\n") + "\n"
         let temp = url.appendingPathExtension("rewrite")
-        guard (try? text.write(to: temp, atomically: true, encoding: .utf8)) != nil else { return }
+        do {
+            try text.write(to: temp, atomically: true, encoding: .utf8)
+        } catch {
+            PersistenceHealth.shared.failed(url, "write the replacement for", error)
+            return
+        }
         // POSIX rename, not `FileManager.replaceItemAt`: on Linux that call deleted the original
         // and left the `.rewrite` file behind, so the next restart started with nothing.
         // rename(2) is atomic and overwrites in place.
-        _ = rename(temp.path, url.path)
+        if rename(temp.path, url.path) == 0 {
+            PersistenceHealth.shared.succeeded(url)
+        } else {
+            PersistenceHealth.shared.failed(url, "rename the replacement over", POSIXFailure(code: errno))
+        }
     }
 }
