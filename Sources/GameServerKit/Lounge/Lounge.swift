@@ -17,6 +17,8 @@ public actor Lounge {
         public let since: Date
         public let lastActiveAt: Date
         public let devices: Int
+        /// The person's picked face (`Avatars`), absent when they haven't chosen one.
+        public var avatar: String? = nil
     }
 
     public struct ChatLine: Content, Sendable, Equatable {
@@ -25,6 +27,7 @@ public actor Lounge {
         public let name: String
         public let text: String
         public let at: Date
+        public var avatar: String? = nil
     }
 
     public struct Snapshot: Content, Sendable {
@@ -58,6 +61,7 @@ public actor Lounge {
         let personId: String
         var name: String
         var lastHeardFrom: Date
+        var avatar: String? = nil
     }
 
     private var connections: [UUID: Connection] = [:]
@@ -76,19 +80,19 @@ public actor Lounge {
     // MARK: Membership
 
     /// Seats a socket in the lounge. `personId` groups this person's devices.
-    public func join(socket: WebSocket, personId: String, name: String) -> UUID {
-        seat(socket: socket, personId: personId, name: name)
+    public func join(socket: WebSocket, personId: String, name: String, avatar: String? = nil) -> UUID {
+        seat(socket: socket, personId: personId, name: name, avatar: avatar)
     }
 
     /// A member with no socket: `WebSocket` can't be constructed in a unit test.
-    func joinForTesting(personId: String, name: String) -> UUID {
-        seat(socket: nil, personId: personId, name: name)
+    func joinForTesting(personId: String, name: String, avatar: String? = nil) -> UUID {
+        seat(socket: nil, personId: personId, name: name, avatar: avatar)
     }
 
-    private func seat(socket: WebSocket?, personId: String, name: String) -> UUID {
+    private func seat(socket: WebSocket?, personId: String, name: String, avatar: String? = nil) -> UUID {
         let id = UUID()
         let now = Date()
-        connections[id] = Connection(socket: socket, personId: personId, name: name, lastHeardFrom: now)
+        connections[id] = Connection(socket: socket, personId: personId, name: name, lastHeardFrom: now, avatar: avatar)
         if arrivedAt[personId] == nil { arrivedAt[personId] = now }
         lastActiveAt[personId] = max(lastActiveAt[personId] ?? now, now)
         return id
@@ -124,7 +128,7 @@ public actor Lounge {
         guard let conn = connections[id] else { return nil }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard (1...Self.maxTextLength).contains(trimmed.count) else { return nil }
-        let line = ChatLine(id: nextLineId, personId: conn.personId, name: conn.name, text: ChatFilter.clean(trimmed), at: Date())
+        let line = ChatLine(id: nextLineId, personId: conn.personId, name: conn.name, text: ChatFilter.clean(trimmed), at: Date(), avatar: conn.avatar)
         nextLineId += 1
         chat.append(line)
         if chat.count > Self.maxChatLines { chat.removeFirst(chat.count - Self.maxChatLines) }
@@ -156,16 +160,16 @@ public actor Lounge {
 
     private func people() -> [Person] {
         // The row's name is whatever the most recently heard-from device calls itself.
-        var byPerson: [String: (name: String, heard: Date, devices: Int)] = [:]
+        var byPerson: [String: (name: String, heard: Date, devices: Int, avatar: String?)] = [:]
         for c in connections.values {
-            var entry = byPerson[c.personId] ?? (name: c.name, heard: .distantPast, devices: 0)
+            var entry = byPerson[c.personId] ?? (name: c.name, heard: .distantPast, devices: 0, avatar: nil)
             entry.devices += 1
-            if c.lastHeardFrom >= entry.heard { entry.name = c.name; entry.heard = c.lastHeardFrom }
+            if c.lastHeardFrom >= entry.heard { entry.name = c.name; entry.heard = c.lastHeardFrom; entry.avatar = c.avatar ?? entry.avatar }
             byPerson[c.personId] = entry
         }
         return byPerson.map { id, entry in
             Person(id: id, name: entry.name, since: arrivedAt[id] ?? Date(),
-                   lastActiveAt: lastActiveAt[id] ?? arrivedAt[id] ?? Date(), devices: entry.devices)
+                   lastActiveAt: lastActiveAt[id] ?? arrivedAt[id] ?? Date(), devices: entry.devices, avatar: entry.avatar)
         }.sorted { $0.since < $1.since }
     }
 

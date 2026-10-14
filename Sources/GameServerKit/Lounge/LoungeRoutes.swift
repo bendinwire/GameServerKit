@@ -15,12 +15,16 @@ public struct LoungeRoutes: RouteCollection, Sendable {
     public let devices: DeviceRegistry?
     /// Banned people can still idle here but not chat; nil to skip the check.
     public let moderation: ModerationStore?
+    /// Picked faces for the roster and chat; nil to skip.
+    public let avatars: AvatarStore?
 
-    public init(lounge: Lounge, identities: PlayerIdentityStore, devices: DeviceRegistry? = nil, moderation: ModerationStore? = nil) {
+    public init(lounge: Lounge, identities: PlayerIdentityStore, devices: DeviceRegistry? = nil,
+                moderation: ModerationStore? = nil, avatars: AvatarStore? = nil) {
         self.lounge = lounge
         self.identities = identities
         self.devices = devices
         self.moderation = moderation
+        self.avatars = avatars
     }
 
     public func boot(routes: RoutesBuilder) throws {
@@ -59,7 +63,7 @@ public struct LoungeRoutes: RouteCollection, Sendable {
             } else {
                 personId = "anon-\(UUID().uuidString)"
             }
-            let id = await lounge.join(socket: ws, personId: personId, name: name)
+            let id = await lounge.join(socket: ws, personId: personId, name: name, avatar: await avatars?.avatar(for: personId))
             try? await ws.send(await lounge.encode(.init(type: "lounge", people: await lounge.snapshot().people, chat: await lounge.snapshot().chat)))
             await lounge.announceArrival()
 
