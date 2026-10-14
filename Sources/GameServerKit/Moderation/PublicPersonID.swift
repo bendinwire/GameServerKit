@@ -11,6 +11,12 @@ public enum PublicPersonID {
         return hash(basis)
     }
 
+    /// The same id from an `identityIdsByKey()` snapshot, for when a whole history's worth of
+    /// seats needs one and an actor hop per seat is waste.
+    public static func of(key: String, identityIdsByKey: [String: UUID]) -> String {
+        hash(identityIdsByKey[key]?.uuidString ?? key)
+    }
+
     static func hash(_ basis: String) -> String {
         let digest = SHA256.hash(data: Data("person:\(basis)".utf8))
         return digest.prefix(12).map { String(format: "%02x", $0) }.joined()

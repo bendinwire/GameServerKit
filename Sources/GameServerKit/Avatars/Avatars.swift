@@ -39,6 +39,12 @@ public actor AvatarStore {
         return byPerson?[personId]
     }
 
+    /// Every pick at once, keyed by `PublicPersonID`, for decorating a leaderboard or a history page.
+    public func all() -> [String: String] {
+        load()
+        return byPerson ?? [:]
+    }
+
     /// Nil clears it back to the initial-letter disc.
     public func set(_ avatar: String?, for personId: String) {
         load()

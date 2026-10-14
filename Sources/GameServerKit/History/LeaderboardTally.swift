@@ -34,6 +34,8 @@ public enum LeaderboardTally {
         /// cannot recognize its own row otherwise, and the alternative — publishing an id per row
         /// for clients to match on — would put an identifier for every player in a public response.
         public let you: Bool
+        /// This person's `PublicPersonID`, for looking up their avatar. Not for the wire: see `you`.
+        public let personId: String
         public var qualified: Bool { games >= minimumGames }
         public let stat: Stat
     }
@@ -96,7 +98,8 @@ public enum LeaderboardTally {
             let name = t.nameCounts.max { a, b in
                 a.value != b.value ? a.value < b.value : (a.key != t.latestName && b.key == t.latestName)
             }?.key ?? t.latestName
-            return Person(name: name, games: t.games, devices: t.devices, you: group == myGroup, stat: t.stat)
+            return Person(name: name, games: t.games, devices: t.devices, you: group == myGroup,
+                          personId: PublicPersonID.hash(group), stat: t.stat)
         }
         return Result(people: people, gamesCounted: counted, gamesUnattributed: unattributed)
     }
