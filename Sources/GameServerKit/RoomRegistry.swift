@@ -49,6 +49,16 @@ public actor RoomRegistry<Room: GameRoom> {
         rooms[code.uppercased()]
     }
 
+    /// Puts a room back under the code it had before, for a game saved to disk and picked up
+    /// again. Returns false, storing nothing, if a live room already holds that code.
+    @discardableResult
+    public func restoreRoom(_ room: Room, code: String) -> Bool {
+        let key = code.uppercased()
+        guard rooms[key] == nil else { return false }
+        rooms[key] = room
+        return true
+    }
+
     public func removeRoom(for code: String) {
         rooms.removeValue(forKey: code.uppercased())
     }
