@@ -16,6 +16,9 @@ let package = Package(
         .target(name: "GameServerKit", dependencies: [
             .product(name: "Vapor", package: "vapor"),
         ]),
-        .testTarget(name: "GameServerKitTests", dependencies: ["GameServerKit"]),
+        .testTarget(name: "GameServerKitTests", dependencies: [
+            "GameServerKit",
+            .product(name: "XCTVapor", package: "vapor"),
+        ]),
     ]
 )
