@@ -170,16 +170,17 @@ public actor PlayerIdentityStore {
     public static let codeLength = 6
 
     /// This key's permanent code, minting an identity of one (and a code) if it has neither.
-    public func permanentCode(for key: String) -> String {
+    /// `avoiding` is any word taken elsewhere (another game's, via `SecretWordRegistry`).
+    public func permanentCode(for key: String, avoiding: Set<String> = []) -> String {
         var identities = loadIfNeeded()
         if let index = identities.firstIndex(where: { $0.keys.contains(key) }) {
             if let code = identities[index].linkCode { return code }
-            let code = freshCode(among: identities)
+            let code = freshCode(among: identities, avoiding: avoiding)
             identities[index].linkCode = code
             persist(identities)
             return code
         }
-        let code = freshCode(among: identities)
+        let code = freshCode(among: identities, avoiding: avoiding)
         identities.append(PlayerIdentity(
             id: UUID(), keys: [key],
             createdAt: ISO8601DateFormatter().string(from: Date()), linkCode: code
@@ -189,12 +190,12 @@ public actor PlayerIdentityStore {
     }
 
     /// Retires the current code and issues another. The old one stops working at once.
-    public func rotateCode(for key: String) -> String {
+    public func rotateCode(for key: String, avoiding: Set<String> = []) -> String {
         var identities = loadIfNeeded()
         guard let index = identities.firstIndex(where: { $0.keys.contains(key) }) else {
-            return permanentCode(for: key)
+            return permanentCode(for: key, avoiding: avoiding)
         }
-        let code = freshCode(among: identities)
+        let code = freshCode(among: identities, avoiding: avoiding)
         identities[index].linkCode = code
         persist(identities)
         return code
@@ -207,6 +208,35 @@ public actor PlayerIdentityStore {
         var identities = loadIfNeeded()
         guard let index = identities.firstIndex(where: { $0.keys.contains(key) }),
               identities[index].linkCode != code else { return }
+        identities[index].linkCode = code
+        persist(identities)
+    }
+
+    /// A random word nobody here or in `avoiding` holds, without giving it to anyone yet.
+    public func unusedCode(avoiding: Set<String> = []) -> String {
+        freshCode(among: loadIfNeeded(), avoiding: avoiding)
+    }
+
+    /// Every identity's code, for filing them in the shared `SecretWordRegistry` at startup.
+    public func allCodes() -> [(identity: UUID, word: String)] {
+        loadIfNeeded().compactMap { identity in identity.linkCode.map { (identity.id, $0) } }
+    }
+
+    public func identity(withId id: UUID) -> PlayerIdentity? {
+        loadIfNeeded().first { $0.id == id }
+    }
+
+    /// Sets an identity's code by id: the shared list renamed this person's word from another
+    /// game, and this game's copy catches up. Any other identity here holding that word loses it.
+    public func setCode(_ code: String?, forIdentity id: UUID) {
+        var identities = loadIfNeeded()
+        guard let index = identities.firstIndex(where: { $0.id == id }),
+              identities[index].linkCode != code else { return }
+        if let code {
+            for i in identities.indices where i != index && identities[i].linkCode == code {
+                identities[i].linkCode = nil
+            }
+        }
         identities[index].linkCode = code
         persist(identities)
     }
@@ -265,8 +295,8 @@ public actor PlayerIdentityStore {
     viola wagon whale wheat yacht zebra
     """.split(whereSeparator: { $0 == " " || $0 == "\n" }).map { $0.uppercased() }
 
-    private func freshCode(among identities: [PlayerIdentity]) -> String {
-        let taken = Set(identities.compactMap(\.linkCode))
+    private func freshCode(among identities: [PlayerIdentity], avoiding: Set<String> = []) -> String {
+        let taken = Set(identities.compactMap(\.linkCode)).union(avoiding)
         // Both shapes on equal footing: a six-letter word ("BARREL") or a five-letter word plus a
         // digit ("TIGER4"). Six characters either way; a coin flip picks the shape.
         var code: String
