@@ -139,7 +139,7 @@ public struct IdentityRoutes: RouteCollection {
     /// has never seen (minted here since startup) is filed in it.
     private func syncedCode(_ identity: PlayerIdentity) async -> String? {
         guard let words, let game else { return identity.linkCode }
-        if let entry = await words.entry(game: game, identity: identity.id) {
+        if let entry = await words.entry(game: game, identity: identity.id, preferring: identity.linkCode) {
             if entry.word != identity.linkCode { await identities.setCode(entry.word, forIdentity: identity.id) }
             return entry.word
         }
@@ -277,16 +277,24 @@ public struct IdentityRoutes: RouteCollection {
             throw Abort(.notFound, reason: "That code doesn't match any record.")
         }
         guard issuedFor != key else { throw Abort(.badRequest, reason: "That code came from this device.") }
+        // Both halves, before the merge drops one of them.
+        let before = [await identities.identity(for: issuedFor)?.id, await identities.identity(for: key)?.id]
         let outcome = await identities.link(existingKey: issuedFor, newKey: key)
         // The code the person typed stays the record's code, whichever identity the merge kept.
         if let permanent { await identities.adoptCode(permanent, for: key) }
         // The merge may have kept the other record; make sure the shared list names the survivor.
         if let words, let game, let permanent, let survivor = await identities.identity(for: key),
-           await words.entry(game: game, identity: survivor.id)?.word != permanent {
+           await words.entry(word: permanent)?.owners[game] != survivor.id {
             if let entry = await words.entry(word: permanent), entry.localOnly != true {
-                _ = await words.attach(word: permanent, game: game, identity: survivor.id)
+                _ = await words.attach(word: permanent, game: game, identity: survivor.id, exclusive: false)
             } else {
                 await words.importLocal(game: game, codes: [(survivor.id, permanent)])
+            }
+        }
+        // The record the merge dropped keeps no words of its own: they move to the survivor.
+        if let words, let game, let survivor = await identities.identity(for: key) {
+            for case let id? in before where id != survivor.id {
+                await words.transfer(game: game, from: id, to: survivor.id)
             }
         }
         switch outcome {
