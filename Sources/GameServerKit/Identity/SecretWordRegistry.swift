@@ -118,9 +118,12 @@ public actor SecretWordRegistry {
         read().first { $0.word == word }
     }
 
-    /// The entry that names this game's identity, if it has one.
-    public func entry(game: String, identity: UUID) -> SecretWordEntry? {
-        read().first { $0.owners[game] == identity }
+    /// The entry that names this game's identity, if it has one. A merged record can be named by
+    /// more than one word (see `transfer`); `preferring` picks the one the record shows, its own
+    /// `linkCode`, when that is among them.
+    public func entry(game: String, identity: UUID, preferring word: String? = nil) -> SecretWordEntry? {
+        let mine = read().filter { $0.owners[game] == identity }
+        return mine.first { $0.word == word } ?? mine.first
     }
 
     public func allWords() -> Set<String> {
@@ -188,6 +191,12 @@ public actor SecretWordRegistry {
                     entries[mine].updatedAt = Self.now()
                     outcome = .claimed(entries[mine])
                 }
+                // Any other word this record carried in from a merge goes too: picking a new
+                // word means the old ones stop working.
+                for i in entries.indices.reversed() where entries[i].word != word && entries[i].owners[game] == identity {
+                    entries[i].owners[game] = nil
+                    if entries[i].owners.isEmpty { entries.remove(at: i) }
+                }
             } else {
                 let fresh = SecretWordEntry(word: word, owners: [game: identity], updatedAt: Self.now())
                 entries.append(fresh)
@@ -199,8 +208,9 @@ public actor SecretWordRegistry {
 
     /// Files this game's `identity` under a word another game already owns: the person typed
     /// their word into a game they have not used it in yet. Any word this identity had in this
-    /// game is given up. Nil when the word is unknown or `localOnly`.
-    public func attach(word: String, game: String, identity: UUID) -> SecretWordEntry? {
+    /// game is given up, unless `exclusive` is false (a merge, where the record keeps every word
+    /// that named either half). Nil when the word is unknown or `localOnly`.
+    public func attach(word: String, game: String, identity: UUID, exclusive: Bool = true) -> SecretWordEntry? {
         var result: SecretWordEntry?
         mutate { entries in
             guard let target = entries.firstIndex(where: { $0.word == word }),
@@ -211,12 +221,28 @@ public actor SecretWordRegistry {
             entries[target].owners[game] = identity
             entries[target].updatedAt = Self.now()
             result = entries[target]
+            guard exclusive else { return }
             for i in entries.indices.reversed() where i != target && entries[i].owners[game] == identity {
                 entries[i].owners[game] = nil
                 if entries[i].owners.isEmpty { entries.remove(at: i) }
             }
         }
         return result
+    }
+
+    /// Two of this game's records became one and `from` no longer exists. Its words now name
+    /// `to`, so a word the person memorized for either half still opens the merged record, here
+    /// and (for a word another game shares) there. Left alone, the word would name nobody, and
+    /// the next device to type it would get a brand-new record of its own: how Bignameactress
+    /// split again on 2026-11-18.
+    public func transfer(game: String, from: UUID, to: UUID) {
+        guard from != to else { return }
+        mutate { entries in
+            for i in entries.indices where entries[i].owners[game] == from {
+                entries[i].owners[game] = to
+                entries[i].updatedAt = Self.now()
+            }
+        }
     }
 
     /// This game's identity is gone ("forget me"). The word survives for the other games.

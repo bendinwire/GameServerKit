@@ -168,3 +168,50 @@ private struct Status: Codable { let linked: Bool; let devices: Int; let keys: [
     }
     #expect(await swoop.identities.identity(for: "swoop-new-key")?.id == swoopRecord)
 }
+
+/// Bignameactress, 2026-11-18: her Swoop record had one word and her Quadfecta record another.
+/// Typing the Quadfecta word on a fresh Swoop device made a second Swoop record (nothing could
+/// tell the server it was her), and once the two were merged, that word still named the record
+/// that no longer existed: the next device to type it would have split her a third time.
+@Test func mergingTwoRecordsKeepsBothWordsOnTheSurvivor() async throws {
+    let words = scratch("shared")
+    let swoop = try await makeGame("swoop", words: words)
+    let qf = try await makeGame("quadfecta", words: words)
+    defer { Task { try? await swoop.app.asyncShutdown(); try? await qf.app.asyncShutdown() } }
+
+    func post(_ game: Game, _ path: String, _ body: [String: String]) async throws -> HTTPStatus {
+        var status = HTTPStatus.internalServerError
+        try await game.app.test(.POST, path, beforeRequest: { req async throws in
+            try req.content.encode(body)
+        }) { res async throws in status = res.status }
+        return status
+    }
+
+    #expect(try await post(swoop, "api/v1/word", ["key": "swoop-ipad-key", "word": "AMBER8"]) == .ok)
+    #expect(try await post(qf, "api/v1/word", ["key": "quad-phone-key", "word": "QUARTZ"]) == .ok)
+    let original = await swoop.identities.identity(for: "swoop-ipad-key")!.id
+
+    // A fresh Swoop install types the Quadfecta word: a second Swoop record, as designed.
+    #expect(try await post(swoop, "api/v1/link/redeem", ["key": "swoop-new-key", "code": "QUARTZ"]) == .ok)
+    let split = await swoop.identities.identity(for: "swoop-new-key")!.id
+    #expect(split != original)
+
+    // The two Swoop records are merged (her Swoop word, typed on the new device).
+    #expect(try await post(swoop, "api/v1/link/redeem", ["key": "swoop-new-key", "code": "AMBER8"]) == .ok)
+    #expect(await swoop.identities.identity(for: "swoop-new-key")?.id == original)
+    #expect(await swoop.identities.identity(withId: split) == nil)
+    let registry = SecretWordRegistry(fileURL: words)
+    #expect(await registry.entry(word: "QUARTZ")?.owners["swoop"] == original)
+
+    // Her Quadfecta word on a third Swoop device now joins her one record.
+    #expect(try await post(swoop, "api/v1/link/redeem", ["key": "swoop-third-key", "code": "quartz"]) == .ok)
+    #expect(Set(await swoop.identities.keys(sameAs: "swoop-third-key")) == ["swoop-ipad-key", "swoop-new-key", "swoop-third-key"])
+    // Quadfecta's record is untouched.
+    #expect(await registry.entry(word: "QUARTZ")?.owners["quadfecta"] == qf.identities.identity(for: "quad-phone-key")?.id)
+
+    // Picking a new word in Swoop retires both old ones there; Quadfecta keeps QUARTZ's other half.
+    #expect(try await post(swoop, "api/v1/word", ["key": "swoop-ipad-key", "word": "ORCHARD9"]) == .ok)
+    #expect(await registry.entry(game: "swoop", identity: original)?.word == "ORCHARD9")
+    #expect(await registry.entry(word: "QUARTZ")?.owners["swoop"] == nil)
+    #expect(await registry.entry(word: "QUARTZ")?.owners["quadfecta"] != nil)
+}
